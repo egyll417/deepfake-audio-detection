@@ -1,0 +1,14 @@
+data/
+DL_project_data/
+*.pkl
+*.sec
+__pycache__/
+.venv/
+.ipynb_checkpoints/
+st200093*
+1deepfake_project.ipynb
+generate_submission.py
+__init__.py
+Intro2DL-Project-main/
+final_test*
+figs/

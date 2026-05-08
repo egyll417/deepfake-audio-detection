@@ -1,0 +1,212 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2869
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 \{\
+ "cells": [\
+  \{\
+   "cell_type": "markdown",\
+   "id": "7952c683",\
+   "metadata": \{\},\
+   "source": [\
+    "## Imports"\
+   ]\
+  \},\
+  \{\
+   "cell_type": "code",\
+   "execution_count": null,\
+   "id": "ca3ab616",\
+   "metadata": \{\},\
+   "outputs": [],\
+   "source": [\
+    "import torch\\n",\
+    "import torch.nn as nn\\n",\
+    "import torch.nn.functional as F\\n",\
+    "import torch.optim as optim\\n",\
+    "from torch.utils.data import Dataset, DataLoader\\n",\
+    "import pandas as pd\\n",\
+    "import numpy as np\\n",\
+    "import pickle"\
+   ]\
+  \},\
+  \{\
+   "cell_type": "markdown",\
+   "id": "9e7e6f86",\
+   "metadata": \{\},\
+   "source": [\
+    "## Model and Dataset\\n",\
+    "\\n",\
+    "LFCC feature matrices of shape `[180, 321]` are treated as single-channel 2D images and passed through a CNN."\
+   ]\
+  \},\
+  \{\
+   "cell_type": "code",\
+   "execution_count": null,\
+   "id": "bf6c68ae",\
+   "metadata": \{\},\
+   "outputs": [],\
+   "source": [\
+    "class AudioCNN(nn.Module):\\n",\
+    "    def __init__(self):\\n",\
+    "        super().__init__()\\n",\
+    "        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, padding=1)\\n",\
+    "        self.bn1   = nn.BatchNorm2d(16)\\n",\
+    "        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)\\n",\
+    "        self.bn2   = nn.BatchNorm2d(32)\\n",\
+    "        self.pool  = nn.MaxPool2d(2)\\n",\
+    "        self.adaptive_pool = nn.AdaptiveAvgPool2d((4, 4))\\n",\
+    "        self.fc1   = nn.Linear(32 * 4 * 4, 1)\\n",\
+    "\\n",\
+    "    def forward(self, x):\\n",\
+    "        x = x.unsqueeze(1)\\n",\
+    "        x = self.pool(F.relu(self.bn1(self.conv1(x))))\\n",\
+    "        x = self.pool(F.relu(self.bn2(self.conv2(x))))\\n",\
+    "        x = self.adaptive_pool(x)\\n",\
+    "        x = x.view(x.size(0), -1)\\n",\
+    "        return self.fc1(x)\\n",\
+    "\\n",\
+    "\\n",\
+    "class AudioDataset(Dataset):\\n",\
+    "    def __init__(self, features_df, labels_df):\\n",\
+    "        self.data = pd.merge(features_df, labels_df, on='uttid')\\n",\
+    "\\n",\
+    "    def __len__(self):\\n",\
+    "        return len(self.data)\\n",\
+    "\\n",\
+    "    def __getitem__(self, idx):\\n",\
+    "        x = self.data.iloc[idx]['features']\\n",\
+    "        y = torch.tensor(self.data.iloc[idx]['label'], dtype=torch.float32)\\n",\
+    "        return x, y"\
+   ]\
+  \},\
+  \{\
+   "cell_type": "markdown",\
+   "id": "7863412c",\
+   "metadata": \{\},\
+   "source": [\
+    "## Data Loading\\n",\
+    "\\n",\
+    "The `CompatibilityUnpickler` handles a NumPy version mismatch that arises when `.pkl` files were serialized with an older NumPy and loaded under a newer one."\
+   ]\
+  \},\
+  \{\
+   "cell_type": "code",\
+   "execution_count": null,\
+   "id": "a141fe6e",\
+   "metadata": \{\},\
+   "outputs": [],\
+   "source": [\
+    "class CompatibilityUnpickler(pickle.Unpickler):\\n",\
+    "    \\"\\"\\"Handles numpy.core -> numpy._core rename introduced in NumPy 2.x.\\"\\"\\"\\n",\
+    "    def find_class(self, module, name):\\n",\
+    "        if module in ['numpy._core.numeric', 'numpy.core.numeric']:\\n",\
+    "            import numpy\\n",\
+    "            return numpy.core.numeric._frombuffer\\n",\
+    "        return super().find_class(module, name)\\n",\
+    "\\n",\
+    "def load_pickle_compat(path):\\n",\
+    "    with open(path, 'rb') as f:\\n",\
+    "        return CompatibilityUnpickler(f).load()\\n",\
+    "\\n",\
+    "\\n",\
+    "# Update these paths to point to your local data directory\\n",\
+    "TRAIN_FEATURES = 'data/train/features.pkl'\\n",\
+    "TRAIN_LABELS   = 'data/train/labels.pkl'\\n",\
+    "\\n",\
+    "print(\\"Loading data...\\")\\n",\
+    "train_feats = load_pickle_compat(TRAIN_FEATURES)\\n",\
+    "train_labs  = load_pickle_compat(TRAIN_LABELS)\\n",\
+    "\\n",\
+    "train_dataset = AudioDataset(train_feats, train_labs)\\n",\
+    "train_loader  = DataLoader(train_dataset, batch_size=32, shuffle=True)\\n",\
+    "\\n",\
+    "model     = AudioCNN()\\n",\
+    "criterion = nn.BCEWithLogitsLoss()\\n",\
+    "optimizer = optim.Adam(model.parameters(), lr=0.001)\\n",\
+    "\\n",\
+    "print(f\\"Dataset size: \{len(train_dataset)\} samples\\")"\
+   ]\
+  \},\
+  \{\
+   "cell_type": "markdown",\
+   "id": "cc89b75a",\
+   "metadata": \{\},\
+   "source": [\
+    "## Training"\
+   ]\
+  \},\
+  \{\
+   "cell_type": "code",\
+   "execution_count": null,\
+   "id": "53d89ff0",\
+   "metadata": \{\},\
+   "outputs": [],\
+   "source": [\
+    "EPOCHS = 12\\n",\
+    "\\n",\
+    "model.train()\\n",\
+    "for epoch in range(EPOCHS):\\n",\
+    "    total_loss = 0\\n",\
+    "    for x, y in train_loader:\\n",\
+    "        optimizer.zero_grad()\\n",\
+    "        pred = model(x).squeeze()\\n",\
+    "        loss = criterion(pred, y)\\n",\
+    "        loss.backward()\\n",\
+    "        optimizer.step()\\n",\
+    "        total_loss += loss.item()\\n",\
+    "    print(f\\"Epoch \{epoch+1:02d\}/\{EPOCHS\}  Loss: \{total_loss/len(train_loader):.4f\}\\")"\
+   ]\
+  \},\
+  \{\
+   "cell_type": "markdown",\
+   "id": "c59439e4",\
+   "metadata": \{\},\
+   "source": [\
+    "## Inference"\
+   ]\
+  \},\
+  \{\
+   "cell_type": "code",\
+   "execution_count": null,\
+   "id": "f1bc1b47",\
+   "metadata": \{\},\
+   "outputs": [],\
+   "source": [\
+    "TEST_FEATURES = 'data/test/features.pkl'\\n",\
+    "test_df = load_pickle_compat(TEST_FEATURES)\\n",\
+    "\\n",\
+    "model.eval()\\n",\
+    "uttids, preds = [], []\\n",\
+    "\\n",\
+    "with torch.no_grad():\\n",\
+    "    for i in range(len(test_df)):\\n",\
+    "        feat  = test_df.iloc[i]['features'].clone().detach().to(torch.float32).unsqueeze(0)\\n",\
+    "        score = torch.sigmoid(model(feat)).item()\\n",\
+    "        uttids.append(test_df.iloc[i]['uttid'])\\n",\
+    "        preds.append(score)\\n",\
+    "\\n",\
+    "results = pd.DataFrame(\{'uttid': uttids, 'predictions': preds\})\\n",\
+    "results.to_pickle('prediction.pkl')\\n",\
+    "print(f\\"Saved \{len(results)\} predictions to prediction.pkl\\")\\n",\
+    "results.head()"\
+   ]\
+  \}\
+ ],\
+ "metadata": \{\
+  "kernelspec": \{\
+   "display_name": "Python 3",\
+   "language": "python",\
+   "name": "python3"\
+  \},\
+  "language_info": \{\
+   "name": "python",\
+   "version": "3.10.14"\
+  \}\
+ \},\
+ "nbformat": 4,\
+ "nbformat_minor": 5\
+\}\
+}
