@@ -1,0 +1,5 @@
+torch==2.5.1
+pandas==2.3.3
+numpy==2.0.0
+# tqdm==4.67.1 (not necessary for this project)
+# transformers==4.57.6 (not necessary for this project, only used in the coding sessions)
